@@ -12,7 +12,7 @@ A modern offline-first Flutter application that helps users build healthy hydrat
 - 🎯 Weight-Based Daily Water Goal
 - 📊 Beautiful Analytics Dashboard
 - 📅 Hydration History & Timeline
-- 🏆 Gamification with XP & Achievements
+- 🏆 Gamification with XP & Streaks
 - 🔔 Offline Local Notifications
 - 🌙 Premium Light & Dark Themes
 - 💾 Offline-first with SQLite
@@ -23,13 +23,13 @@ A modern offline-first Flutter application that helps users build healthy hydrat
 
 <div align="center">
 
-| Splash Screen | Home Dashboard | History | Analytics |
+| Splash Screen | Home Dashboard | Analytics | Achievements |
 |---|---|---|---|
-| <img src="assets/images/Splash%20Screen.jpg" width="180"/> | <img src="assets/images/Home%20Dashboard.jpg" width="180"/> | <img src="assets/images/History.jpg" width="180"/> | <img src="assets/images/Analytics.jpg" width="180"/> |
+| <img src="assets/images/Splash%20Screen.jpg" width="180"/> | <img src="assets/images/Home%20Dashboard.jpg" width="180"/> | <img src="assets/images/Analytics.jpg" width="180"/> | <img src="assets/images/Achievements.jpg" width="180"/> |
 
-| Achievements | Reminder Setup | Settings |
-|---|---|---|
-| <img src="assets/images/Achievements.jpg" width="180"/> | <img src="assets/images/Reminder%20Setup.jpg" width="180"/> | <img src="assets/images/Settings.jpg" width="180"/> |
+| Streaks | Reminder Setup | History | Settings |
+|---|---|---|---|
+| <img src="assets/images/Streaks.jpg" width="180"/> | <img src="assets/images/Reminder.jpg" width="180"/> | <img src="assets/images/History.jpg" width="180"/> | <img src="assets/images/Settings.jpg" width="180"/> |
 
 </div>
 
@@ -106,10 +106,10 @@ lib/
 │   ├── home/
 │   ├── history/
 │   ├── analytics/
-│   ├── gamification/
+│   ├── achievements/
 │   ├── reminders/
 │   ├── settings/
-│   └── presets/
+│   └── bottle_presets/
 ├── providers/
 └── main.dart
 ```

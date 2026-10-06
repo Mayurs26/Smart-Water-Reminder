@@ -1,4 +1,6 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
@@ -6,13 +8,49 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:smart_water_reminder/core/constants/app_constants.dart';
 import 'package:smart_water_reminder/data/models/user_settings.dart';
 
-/// Singleton notification service.
-///
-/// ## Timezone strategy
-/// Dart's [DateTime] always stores time as microseconds since the Unix epoch
-/// (UTC-based), regardless of whether it is local or UTC.
-/// [tz.TZDateTime.fromMillisecondsSinceEpoch] preserves that absolute epoch
-/// value, so scheduling is timezone-safe without needing flutter_timezone.
+// ─────────────────────────────────────────────────────────────────────────────
+//  TOP-LEVEL background notification handler.
+//
+//  MUST be a top-level function (not a class method, not a closure).
+//  MUST be annotated @pragma('vm:entry-point') so the Dart VM can locate it
+//  from the background isolate that flutter_local_notifications creates when
+//  the scheduled alarm fires while the app is backgrounded.
+//
+//  Crash Bug #3 fix: previously this was a static class method without @pragma.
+//  The background isolate's VM could not find the function → crash on alarm fire.
+// ─────────────────────────────────────────────────────────────────────────────
+@pragma('vm:entry-point')
+void _onBackgroundNotificationResponse(NotificationResponse response) {
+  // Background isolate — ONLY safe operations here.
+  // No Provider, no BuildContext, no SQLite, no UI widgets.
+  debugPrint('[NotifBg] id=${response.id}  payload=${response.payload}');
+}
+
+// Foreground handler (app is visible when notification is tapped).
+void _onForegroundNotificationResponse(NotificationResponse response) {
+  debugPrint('[NotifFg] id=${response.id}  payload=${response.payload}');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  NotificationService — singleton
+//
+//  Timezone strategy
+//  -----------------
+//  Dart's DateTime.millisecondsSinceEpoch is always the absolute UTC epoch
+//  value regardless of whether the DateTime is local or UTC.
+//  tz.TZDateTime.fromMillisecondsSinceEpoch(tz.UTC, ms) preserves that
+//  absolute value → scheduling is timezone-safe, no flutter_timezone needed.
+//
+//  Scheduling mode
+//  ---------------
+//  exactAllowWhileIdle  — uses AlarmManager.setExactAndAllowWhileIdle().
+//    • Fires even in doze/idle mode.
+//    • Does NOT trigger MIUI's alarm-clock system (setAlarmClock did → crash).
+//    • Requires SCHEDULE_EXACT_ALARM permission on Android 12+ (API 31).
+//      We request it at initialization. If denied, scheduling catches the
+//      PlatformException and logs it — no crash, just no notification until
+//      the user grants "Alarms & Reminders" in device settings.
+// ─────────────────────────────────────────────────────────────────────────────
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
@@ -23,17 +61,18 @@ class NotificationService {
   bool _initialized = false;
 
   // ──────────────────────────────────────────────────────────────────────────
-  //  Initialization
+  //  Initialize
   // ──────────────────────────────────────────────────────────────────────────
 
   Future<void> initialize() async {
     if (_initialized) return;
 
-    // Load timezone database. Do NOT call setLocalLocation with tz.local.name
-    // because tz.local.name is "UTC" before being set — that bug caused
-    // notifications to fire 5.5h late on IST devices.
+    // Load timezone database. Do NOT call setLocalLocation(tz.local.name):
+    // tz.local.name is "UTC" by default before any location is set.
+    // Reading it and writing it back cemented UTC as the device timezone,
+    // causing notifications to fire ~5.5h late on IST devices (Bug #tz).
     tz_data.initializeTimeZones();
-    debugPrint('[NotifService] Timezone database loaded. tz.local = ${tz.local.name}');
+    debugPrint('[NotifSvc] tz database loaded. tz.local=${tz.local.name}');
 
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('ic_launcher');
@@ -52,13 +91,15 @@ class NotificationService {
 
     await _notifications.initialize(
       settings,
-      onDidReceiveNotificationResponse: _onNotificationTapped,
-      onDidReceiveBackgroundNotificationResponse: _onNotificationTapped,
+      // Bug #3 fix: both handlers are now top-level functions.
+      // _onBackgroundNotificationResponse has @pragma('vm:entry-point').
+      onDidReceiveNotificationResponse: _onForegroundNotificationResponse,
+      onDidReceiveBackgroundNotificationResponse: _onBackgroundNotificationResponse,
     );
-    debugPrint('[NotifService] Plugin initialized.');
+    debugPrint('[NotifSvc] plugin initialized');
 
     await _createNotificationChannel();
-    debugPrint('[NotifService] Channel created: ${AppConstants.notificationChannelId}');
+    debugPrint('[NotifSvc] channel "${AppConstants.notificationChannelId}" created');
 
     _initialized = true;
   }
@@ -71,7 +112,8 @@ class NotificationService {
       importance: Importance.high,
       playSound: true,
       enableVibration: true,
-      sound: null, // default system sound
+      // null = default system sound for the channel
+      sound: null,
     );
 
     await _notifications
@@ -80,43 +122,62 @@ class NotificationService {
         ?.createNotificationChannel(channel);
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  //  Permission helpers
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /// Requests POST_NOTIFICATIONS (Android 13+) and SCHEDULE_EXACT_ALARM
+  /// (Android 12+). Returns true if POST_NOTIFICATIONS is granted.
   Future<bool> requestPermissions() async {
-    if (await Permission.notification.isGranted) {
-      debugPrint('[NotifService] Notification permission: already granted.');
-      return true;
+    // ── POST_NOTIFICATIONS ──────────────────────────────────────────────────
+    bool notifGranted = await Permission.notification.isGranted;
+    if (!notifGranted) {
+      final status = await Permission.notification.request();
+      notifGranted = status.isGranted;
+      debugPrint('[NotifSvc] POST_NOTIFICATIONS → ${status.name}');
+    } else {
+      debugPrint('[NotifSvc] POST_NOTIFICATIONS → already granted');
     }
-    final status = await Permission.notification.request();
-    debugPrint('[NotifService] Notification permission requested: ${status.name}');
-    return status.isGranted;
+
+    // ── SCHEDULE_EXACT_ALARM ────────────────────────────────────────────────
+    // Android 12+ (API 31): required for exactAllowWhileIdle scheduling.
+    // permission_handler opens "Alarms & Reminders" settings page for Android 12+.
+    // On older Android, this permission is auto-granted.
+    if (Platform.isAndroid) {
+      final exactStatus = await Permission.scheduleExactAlarm.status;
+      debugPrint('[NotifSvc] SCHEDULE_EXACT_ALARM → ${exactStatus.name}');
+      if (!exactStatus.isGranted) {
+        // This opens Settings → Apps → [App] → Alarms & Reminders
+        final result = await Permission.scheduleExactAlarm.request();
+        debugPrint('[NotifSvc] SCHEDULE_EXACT_ALARM after request → ${result.name}');
+      }
+    }
+
+    return notifGranted;
   }
 
   // ──────────────────────────────────────────────────────────────────────────
   //  Smart scheduling — primary path
   // ──────────────────────────────────────────────────────────────────────────
 
-  /// Cancel all pending notifications, then schedule exactly ONE at
-  /// [scheduledTime] (a local [DateTime]) with [recommendedAmount] ml.
-  ///
-  /// Uses [AndroidScheduleMode.alarmClock] which:
-  ///   - does NOT require SCHEDULE_EXACT_ALARM permission
-  ///   - fires even in doze/idle mode
-  ///   - fires exactly on time in background and when app is terminated
+  /// Cancels all pending notifications and schedules exactly ONE at
+  /// [scheduledTime] (a local [DateTime]).
   Future<void> scheduleSmartReminder({
     required DateTime scheduledTime,
     required int recommendedAmount,
   }) async {
     await cancelAllReminders();
-    debugPrint('[NotifService] cancelAllReminders() done before scheduling.');
 
     final now = DateTime.now();
     final delayMs = scheduledTime.millisecondsSinceEpoch - now.millisecondsSinceEpoch;
-    debugPrint('[NotifService] --- scheduleSmartReminder ---');
-    debugPrint('[NotifService] Now (local):       $now');
-    debugPrint('[NotifService] Scheduled (local): $scheduledTime');
-    debugPrint('[NotifService] Delay:             ${delayMs}ms  (${delayMs ~/ 1000}s)');
+
+    debugPrint('[NotifSvc] ── scheduleSmartReminder ──');
+    debugPrint('[NotifSvc] Now (local):       $now');
+    debugPrint('[NotifSvc] Scheduled (local): $scheduledTime');
+    debugPrint('[NotifSvc] Delay:             ${(delayMs / 1000).toStringAsFixed(1)}s');
 
     if (delayMs <= 0) {
-      debugPrint('[NotifService] ⚠ Scheduled time is in the past — skipping.');
+      debugPrint('[NotifSvc] ⚠ Scheduled time is in the past — skipped.');
       return;
     }
 
@@ -128,16 +189,15 @@ class NotificationService {
       payload: 'drink_$recommendedAmount',
     );
 
-    // Verify it landed in the pending list.
     final pending = await _notifications.pendingNotificationRequests();
-    debugPrint('[NotifService] Pending after schedule: ${pending.length}');
+    debugPrint('[NotifSvc] Pending count after schedule: ${pending.length}');
     for (final p in pending) {
-      debugPrint('[NotifService]   id=${p.id}  title="${p.title}"  body="${p.body}"');
+      debugPrint('[NotifSvc]   → id=${p.id}  "${p.title}"');
     }
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  //  Legacy full-day scheduling (app-start / setting change without intake)
+  //  Legacy full-day scheduling (app-start / setting change, no intake data)
   // ──────────────────────────────────────────────────────────────────────────
 
   Future<void> scheduleDailyReminders(UserSettings settings) async {
@@ -196,17 +256,17 @@ class NotificationService {
     required DateTime scheduledTime,
     required String payload,
   }) async {
-    // KEY FIX: use millisecondsSinceEpoch to create the TZDateTime.
-    // Dart's DateTime.millisecondsSinceEpoch is always UTC-based (absolute),
-    // so this is timezone-safe — no tz.local required.
+    // Timezone-safe: millisecondsSinceEpoch is always the absolute UTC epoch
+    // value, so using tz.UTC here preserves the exact moment regardless of
+    // what tz.local is set to on the device.
     final tz.TZDateTime tzTime = tz.TZDateTime.fromMillisecondsSinceEpoch(
       tz.UTC,
       scheduledTime.millisecondsSinceEpoch,
     );
 
-    debugPrint('[NotifService] _scheduleNotification id=$id');
-    debugPrint('[NotifService]   tzTime (UTC): $tzTime');
-    debugPrint('[NotifService]   scheduledTime (local): $scheduledTime');
+    debugPrint('[NotifSvc] _scheduleNotification id=$id');
+    debugPrint('[NotifSvc]   local  → $scheduledTime');
+    debugPrint('[NotifSvc]   tzTime → $tzTime');
 
     const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       AppConstants.notificationChannelId,
@@ -216,7 +276,8 @@ class NotificationService {
       priority: Priority.high,
       playSound: true,
       enableVibration: true,
-      sound: null, // default system sound
+      // Inherit sound from channel (null = default system notification sound)
+      sound: null,
     );
 
     const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
@@ -231,32 +292,37 @@ class NotificationService {
     );
 
     try {
-      // alarmClock mode: fires exactly on time, no SCHEDULE_EXACT_ALARM needed.
+      // Crash Bug #2 fix: switched from alarmClock to exactAllowWhileIdle.
+      //
+      // alarmClock (AlarmManager.setAlarmClock) was causing crashes on MIUI
+      // because MIUI intercepts alarm-clock alarms and runs its own alarm
+      // overlay/service, which crashed the app process.
+      //
+      // exactAllowWhileIdle (AlarmManager.setExactAndAllowWhileIdle) fires on
+      // time even in doze mode WITHOUT triggering MIUI's alarm clock system.
+      // It requires SCHEDULE_EXACT_ALARM permission (Android 12+), which we
+      // request in requestPermissions(). If denied, the PlatformException is
+      // caught below — scheduling fails gracefully (no crash, just no alarm).
       await _notifications.zonedSchedule(
         id,
         title,
         body,
         tzTime,
         details,
-        androidScheduleMode: AndroidScheduleMode.alarmClock,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         payload: payload,
       );
-      debugPrint('[NotifService] ✓ zonedSchedule succeeded for id=$id');
+      debugPrint('[NotifSvc] ✓ Scheduled id=$id');
+    } on PlatformException catch (e) {
+      // exact_alarms_not_permitted: user hasn't enabled "Alarms & Reminders"
+      // in Settings → Apps → smart_water_reminder. No crash — just log.
+      debugPrint('[NotifSvc] ✗ Schedule failed (${e.code}): ${e.message}');
+      debugPrint('[NotifSvc]   → Guide user to Settings → Apps → Alarms & Reminders');
     } catch (e, st) {
-      debugPrint('[NotifService] ✗ zonedSchedule FAILED: $e');
-      debugPrint('$st');
+      debugPrint('[NotifSvc] ✗ Unexpected schedule error: $e\n$st');
     }
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  //  Tap handler
-  // ──────────────────────────────────────────────────────────────────────────
-
-  static void _onNotificationTapped(NotificationResponse response) {
-    // Bring app to foreground — payload: 'drink_<amount>'
-    debugPrint('[NotifService] Notification tapped. payload=${response.payload}');
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -264,12 +330,11 @@ class NotificationService {
   // ──────────────────────────────────────────────────────────────────────────
 
   Future<void> cancelAllReminders() async {
-    debugPrint('[NotifService] cancelAllReminders()');
+    debugPrint('[NotifSvc] cancelAllReminders()');
     await _notifications.cancelAll();
   }
 
   Future<void> cancelReminder(int id) async {
-    debugPrint('[NotifService] cancelReminder(id=$id)');
     await _notifications.cancel(id);
   }
 

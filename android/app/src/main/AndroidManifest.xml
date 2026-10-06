@@ -3,10 +3,11 @@
     <!-- Required for Android 13+ (API 33+) runtime notification permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
-    <!-- Required for exact alarm scheduling (API 31+) -->
+    <!-- Required for exact alarm scheduling (API 31+).
+         User must enable in Settings → Apps → smart_water_reminder → Alarms & Reminders. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
 
-    <!-- Required to keep notifications working when device is in idle/doze mode -->
+    <!-- Keep notifications working when device is in idle/doze mode -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
     <!-- Required by flutter_local_notifications to receive alarm broadcasts -->
@@ -35,7 +36,11 @@
             </intent-filter>
         </activity>
 
-        <!-- flutter_local_notifications: reschedule alarms after device reboot -->
+        <!--
+            BOOT RECEIVER: flutter_local_notifications reschedules pending alarms
+            after device reboot. This receiver is NOT declared by the plugin's own
+            manifest, so the app must declare it here.
+        -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
             android:exported="true">
@@ -47,10 +52,13 @@
             </intent-filter>
         </receiver>
 
-        <!-- flutter_local_notifications: handles alarm broadcasts -->
-        <receiver
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
-            android:exported="false"/>
+        <!--
+            DO NOT re-declare ScheduledNotificationReceiver here.
+            flutter_local_notifications v18 already declares it in the plugin's
+            own AndroidManifest.xml which is merged at build time.
+            Declaring it twice created a duplicate entry in the merged manifest,
+            causing a crash on MIUI when the alarm broadcast fired.
+        -->
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

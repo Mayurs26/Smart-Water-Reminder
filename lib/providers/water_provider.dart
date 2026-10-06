@@ -1,16 +1,26 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:smart_water_reminder/core/utils/date_utils.dart' as date_utils;
 import 'package:smart_water_reminder/data/models/water_intake.dart';
 import 'package:smart_water_reminder/data/repositories/water_repository.dart';
 
 class WaterProvider extends ChangeNotifier {
   final WaterRepository _repository = WaterRepository();
+
   List<WaterIntake> _todayIntakes = [];
   int _totalConsumed = 0;
   Map<String, int> _dailyTotals = {};
   bool _isLoading = false;
   String _currentDate = '';
   WaterIntake? _lastAddedIntake;
+
+  // Callback fired on every intake change (used for reminder rescheduling).
   Function(int)? _onWaterChanged;
+
+  // Midnight-reset timer.
+  Timer? _midnightTimer;
+
+  // ── Getters ────────────────────────────────────────────────────────────────
 
   List<WaterIntake> get todayIntakes => _todayIntakes;
   int get totalConsumed => _totalConsumed;
@@ -19,17 +29,54 @@ class WaterProvider extends ChangeNotifier {
   String get currentDate => _currentDate;
   WaterIntake? get lastAddedIntake => _lastAddedIntake;
   bool get canUndo => _lastAddedIntake != null;
+  int get glassCount => _todayIntakes.length;
+
+  // ── Initialisation / lifecycle ─────────────────────────────────────────────
 
   void setOnWaterChanged(Function(int) callback) {
     _onWaterChanged = callback;
   }
 
+  /// Sets today's date string and loads data if the date changed.
+  /// Also arms the midnight-reset timer.
   void setCurrentDate(String date) {
     if (_currentDate != date) {
       _currentDate = date;
       loadTodayData();
     }
+    _scheduleMidnightReset();
   }
+
+  /// Arms (or re-arms) a one-shot timer that fires at midnight to roll over
+  /// to the new day without needing an app restart.
+  void _scheduleMidnightReset() {
+    _midnightTimer?.cancel();
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final untilMidnight = tomorrow.difference(now) + const Duration(seconds: 1);
+
+    _midnightTimer = Timer(untilMidnight, () {
+      // Roll over: the new date becomes "today".
+      final newDate = date_utils.AppDateUtils.getTodayString();
+      _currentDate = newDate;
+      _todayIntakes = [];
+      _totalConsumed = 0;
+      _lastAddedIntake = null;
+      _onWaterChanged?.call(0);
+      notifyListeners();
+      loadTodayData();
+      // Rearm for the next midnight.
+      _scheduleMidnightReset();
+    });
+  }
+
+  @override
+  void dispose() {
+    _midnightTimer?.cancel();
+    super.dispose();
+  }
+
+  // ── Data loading ───────────────────────────────────────────────────────────
 
   Future<void> loadTodayData() async {
     if (_currentDate.isEmpty) return;
@@ -49,6 +96,8 @@ class WaterProvider extends ChangeNotifier {
     _dailyTotals = await _repository.getDailyTotals();
     notifyListeners();
   }
+
+  // ── Write operations ───────────────────────────────────────────────────────
 
   Future<void> addWaterIntake(int amount) async {
     final now = DateTime.now();
@@ -77,7 +126,7 @@ class WaterProvider extends ChangeNotifier {
       _lastAddedIntake = _todayIntakes.first;
       _onWaterChanged?.call(_totalConsumed);
     }
-    
+
     _dailyTotals[intake.date] = (_dailyTotals[intake.date] ?? 0) + intake.amount;
     notifyListeners();
   }
@@ -96,7 +145,10 @@ class WaterProvider extends ChangeNotifier {
   }
 
   Future<void> deleteWaterIntake(int id) async {
-    final intake = _todayIntakes.firstWhere((i) => i.id == id, orElse: () => WaterIntake(amount: 0, timestamp: DateTime.now(), date: _currentDate));
+    final intake = _todayIntakes.firstWhere(
+      (i) => i.id == id,
+      orElse: () => WaterIntake(amount: 0, timestamp: DateTime.now(), date: _currentDate),
+    );
     if (intake.id != null) {
       await _repository.deleteWaterIntake(intake.id!);
       _todayIntakes.removeWhere((i) => i.id == id);
@@ -130,6 +182,8 @@ class WaterProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Query helpers ──────────────────────────────────────────────────────────
+
   Future<List<WaterIntake>> getWaterIntakeForDate(String date) async {
     return await _repository.getWaterIntakeForDate(date);
   }
@@ -147,6 +201,4 @@ class WaterProvider extends ChangeNotifier {
   int getRemaining(int dailyGoal) {
     return (dailyGoal - _totalConsumed).clamp(0, dailyGoal);
   }
-
-  int get glassCount => _todayIntakes.length;
 }

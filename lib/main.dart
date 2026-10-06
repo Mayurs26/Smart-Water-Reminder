@@ -77,10 +77,13 @@ class AppEntryPoint extends StatelessWidget {
           return const OnboardingScreen();
         }
 
-        // Initialize water provider callback when app is ready
+        // Initialize water provider callback when app is ready.
+        // Every intake → reschedule smart reminder with updated recommended amount.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           context.read<WaterProvider>().setOnWaterChanged((consumed) {
-            context.read<ReminderProvider>().checkAndRescheduleIfGoalMet();
+            final reminder = context.read<ReminderProvider>();
+            reminder.onWaterIntakeAdded();
+            reminder.checkAndRescheduleIfGoalMet();
           });
         });
 

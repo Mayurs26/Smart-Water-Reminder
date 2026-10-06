@@ -110,6 +110,27 @@ class NotificationService {
     }
   }
 
+  /// Schedules a single smart reminder at [scheduledTime] with a dynamic
+  /// [recommendedAmount] ml shown in the notification body.
+  Future<void> scheduleSmartReminder({
+    required DateTime scheduledTime,
+    required int recommendedAmount,
+  }) async {
+    // Cancel all current reminders first so we only have the next one queued.
+    await cancelAllReminders();
+
+    final now = DateTime.now();
+    if (!scheduledTime.isAfter(now)) return;
+
+    await _scheduleNotification(
+      id: AppConstants.notificationId,
+      title: '💧 Drink $recommendedAmount ml',
+      body: 'Time for your next hydration — $recommendedAmount ml recommended.',
+      scheduledTime: scheduledTime,
+      payload: 'drink_$recommendedAmount',
+    );
+  }
+
   Future<void> _scheduleNotification({
     required int id,
     required String title,

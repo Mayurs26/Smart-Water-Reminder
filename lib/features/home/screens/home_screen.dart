@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:smart_water_reminder/core/services/smart_reminder_engine.dart';
 import 'package:smart_water_reminder/core/theme/app_theme.dart';
 import 'package:smart_water_reminder/core/utils/date_utils.dart' as date_utils;
 import 'package:smart_water_reminder/features/gamification/providers/gamification_provider.dart';
@@ -138,6 +140,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                         amount, dailyGoal, consumed + amount);
                                   },
                                   isLoading: waterProvider.isLoading,
+                                ),
+                                const SizedBox(height: 16),
+                                // ── Smart reminder card
+                                Consumer<ReminderProvider>(
+                                  builder: (context, reminderProv, _) {
+                                    return _SmartReminderCard(
+                                      todayIntakes: waterProvider.todayIntakes,
+                                      dailyGoal: dailyGoal,
+                                      consumed: consumed,
+                                      intervalHours: reminderProv.reminderInterval,
+                                      endTimeStr: reminderProv.reminderEndTime,
+                                      remindersEnabled: reminderProv.remindersEnabled,
+                                    );
+                                  },
                                 ),
                                 const SizedBox(height: 16),
                                 // ── Stats row
@@ -706,4 +722,277 @@ class _WavePainter extends CustomPainter {
   @override
   bool shouldRepaint(_WavePainter old) =>
       old.progress != progress || old.waveOffset != waveOffset;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  SMART REMINDER CARD
+//  Shows: Last Drink · Next Drink · Recommended amount · Live Countdown
+// ══════════════════════════════════════════════════════════════════════
+class _SmartReminderCard extends StatefulWidget {
+  final List todayIntakes;
+  final int dailyGoal;
+  final int consumed;
+  final int intervalHours;
+  final String endTimeStr;
+  final bool remindersEnabled;
+
+  const _SmartReminderCard({
+    required this.todayIntakes,
+    required this.dailyGoal,
+    required this.consumed,
+    required this.intervalHours,
+    required this.endTimeStr,
+    required this.remindersEnabled,
+  });
+
+  @override
+  State<_SmartReminderCard> createState() => _SmartReminderCardState();
+}
+
+class _SmartReminderCardState extends State<_SmartReminderCard> {
+  Timer? _ticker;
+  DateTime _now = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final goalMet = widget.consumed >= widget.dailyGoal;
+
+    final lastDrinkTime = SmartReminderEngine.lastIntakeTime(
+      List.from(widget.todayIntakes),
+    );
+
+    final nextTime = SmartReminderEngine.nextReminderTime(
+      todayIntakes: List.from(widget.todayIntakes),
+      intervalHours: widget.intervalHours,
+      endTimeStr: widget.endTimeStr,
+    );
+
+    final recommended = SmartReminderEngine.recommendedAmount(
+      dailyGoal: widget.dailyGoal,
+      consumed: widget.consumed,
+      intervalHours: widget.intervalHours,
+      endTimeStr: widget.endTimeStr,
+    );
+
+    final diff = nextTime.difference(_now);
+    final totalMins = diff.inMinutes.clamp(0, 24 * 60);
+    final displaySecs = (diff.inSeconds.clamp(0, 24 * 3600) % 60);
+
+    final primaryColor = theme.colorScheme.primary;
+    final cardColor = isDark
+        ? theme.colorScheme.surface
+        : theme.colorScheme.surfaceContainerLowest;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.12),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: theme.shadowColor.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: goalMet
+          ? _GoalMetRow(theme: theme)
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: primaryColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Icon(Icons.notifications_active_outlined,
+                          size: 18, color: primaryColor),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Smart Reminder',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.timer_outlined,
+                              size: 13, color: primaryColor),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${totalMins}m ${displaySecs.toString().padLeft(2, '0')}s',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: primaryColor,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    _ReminderInfoCell(
+                      icon: Icons.access_time_rounded,
+                      label: 'Last drink',
+                      value: lastDrinkTime != null
+                          ? date_utils.AppDateUtils.formatTime(lastDrinkTime)
+                          : '—',
+                      color: theme.colorScheme.secondary,
+                      theme: theme,
+                    ),
+                    _vDivider(theme),
+                    _ReminderInfoCell(
+                      icon: Icons.schedule_rounded,
+                      label: 'Next drink',
+                      value: date_utils.AppDateUtils.formatTime(nextTime),
+                      color: primaryColor,
+                      theme: theme,
+                    ),
+                    _vDivider(theme),
+                    _ReminderInfoCell(
+                      icon: Icons.water_drop_rounded,
+                      label: 'Recommended',
+                      value: '$recommended ml',
+                      color: const Color(0xFF06B6D4),
+                      theme: theme,
+                    ),
+                  ],
+                ),
+                if (!widget.remindersEnabled) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(Icons.notifications_off_outlined,
+                          size: 13,
+                          color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Reminders off — enable in settings',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+    );
+  }
+
+  Widget _vDivider(ThemeData theme) => Container(
+        width: 1,
+        height: 40,
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        color: theme.colorScheme.outline.withValues(alpha: 0.15),
+      );
+}
+
+class _ReminderInfoCell extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+  final ThemeData theme;
+
+  const _ReminderInfoCell({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: theme.colorScheme.onSurface,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontSize: 10,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GoalMetRow extends StatelessWidget {
+  final ThemeData theme;
+
+  const _GoalMetRow({required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 22),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Daily goal complete 🎉 Great job today!',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

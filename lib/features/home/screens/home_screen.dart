@@ -149,7 +149,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       todayIntakes: waterProvider.todayIntakes,
                                       dailyGoal: dailyGoal,
                                       consumed: consumed,
-                                      intervalHours: reminderProv.reminderInterval,
+                                      intervalMinutes: reminderProv.reminderInterval,
                                       endTimeStr: reminderProv.reminderEndTime,
                                       remindersEnabled: reminderProv.remindersEnabled,
                                     );
@@ -164,6 +164,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       ? () => waterProvider.undoLastIntake()
                                       : null,
                                   canUndo: waterProvider.canUndo,
+                                  onIntakesTodayTap: () {
+                                    showModalBottomSheet(
+                                      context: context,
+                                      isScrollControlled: true,
+                                      backgroundColor: Colors.transparent,
+                                      builder: (_) => _IntakeTodayDetailSheet(
+                                        waterProvider: waterProvider,
+                                        dailyGoal: dailyGoal,
+                                      ),
+                                    );
+                                  },
                                 ),
                               ],
                             ),
@@ -732,7 +743,7 @@ class _SmartReminderCard extends StatefulWidget {
   final List todayIntakes;
   final int dailyGoal;
   final int consumed;
-  final int intervalHours;
+  final int intervalMinutes;
   final String endTimeStr;
   final bool remindersEnabled;
 
@@ -740,7 +751,7 @@ class _SmartReminderCard extends StatefulWidget {
     required this.todayIntakes,
     required this.dailyGoal,
     required this.consumed,
-    required this.intervalHours,
+    required this.intervalMinutes,
     required this.endTimeStr,
     required this.remindersEnabled,
   });
@@ -779,14 +790,14 @@ class _SmartReminderCardState extends State<_SmartReminderCard> {
 
     final nextTime = SmartReminderEngine.nextReminderTime(
       todayIntakes: List.from(widget.todayIntakes),
-      intervalHours: widget.intervalHours,
+      intervalMinutes: widget.intervalMinutes,
       endTimeStr: widget.endTimeStr,
     );
 
     final recommended = SmartReminderEngine.recommendedAmount(
       dailyGoal: widget.dailyGoal,
       consumed: widget.consumed,
-      intervalHours: widget.intervalHours,
+      intervalMinutes: widget.intervalMinutes,
       endTimeStr: widget.endTimeStr,
     );
 
@@ -993,6 +1004,215 @@ class _GoalMetRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  INTAKE TODAY DETAIL SHEET
+// ══════════════════════════════════════════════════════════════════════
+class _IntakeTodayDetailSheet extends StatelessWidget {
+  final WaterProvider waterProvider;
+  final int dailyGoal;
+
+  const _IntakeTodayDetailSheet({
+    required this.waterProvider,
+    required this.dailyGoal,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final consumed = waterProvider.totalConsumed;
+    final remaining = (dailyGoal - consumed).clamp(0, dailyGoal);
+    final progress = waterProvider.getProgress(dailyGoal);
+    final intakes = waterProvider.todayIntakes;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? theme.colorScheme.surface : theme.colorScheme.surfaceContainerLowest,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Today\'s Intake',
+                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              '$consumed ml / $dailyGoal ml',
+              style: theme.textTheme.headlineMedium?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 8,
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Text(
+                  '${(progress * 100).toInt()}%',
+                  style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            child: Text(
+              'Remaining: $remaining ml',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Divider(height: 1, color: theme.colorScheme.outline.withValues(alpha: 0.1)),
+          Expanded(
+            child: intakes.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.water_drop_outlined, size: 48, color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+                        const SizedBox(height: 16),
+                        Text('No water recorded yet today', style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    itemCount: intakes.length,
+                    separatorBuilder: (context, index) => Divider(height: 1, indent: 56, color: theme.colorScheme.outline.withValues(alpha: 0.05)),
+                    itemBuilder: (context, index) {
+                      final intake = intakes[index];
+                      return ListTile(
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primaryContainer,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.water_drop, size: 20, color: theme.colorScheme.primary),
+                        ),
+                        title: Text('${intake.amount} ml', style: const TextStyle(fontWeight: FontWeight.w600)),
+                        trailing: Text(
+                          date_utils.AppDateUtils.formatTime(intake.timestamp),
+                          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          
+          // Next Drink prediction
+          Consumer<ReminderProvider>(
+            builder: (context, rp, _) {
+              if (consumed >= dailyGoal || intakes.isEmpty || !rp.remindersEnabled) {
+                return const SizedBox.shrink();
+              }
+              
+              final nextTime = SmartReminderEngine.nextReminderTime(
+                todayIntakes: intakes,
+                intervalMinutes: rp.reminderInterval,
+                endTimeStr: rp.reminderEndTime,
+              );
+              
+              final recommended = SmartReminderEngine.recommendedAmount(
+                dailyGoal: dailyGoal,
+                consumed: consumed,
+                intervalMinutes: rp.reminderInterval,
+                endTimeStr: rp.reminderEndTime,
+              );
+              
+              return Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                  border: Border(top: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.1))),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.access_time_filled, color: Colors.white),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('NEXT DRINK', style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                          const SizedBox(height: 4),
+                          Text(date_utils.AppDateUtils.formatTime(nextTime), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface)),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('Suggested', style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                        const SizedBox(height: 4),
+                        Text('$recommended ml', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: theme.colorScheme.primary)),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }

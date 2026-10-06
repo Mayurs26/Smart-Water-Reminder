@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:smart_water_reminder/core/constants/app_constants.dart';
 import 'package:smart_water_reminder/core/services/notification_service.dart';
 import 'package:smart_water_reminder/providers/reminder_provider.dart';
-import 'package:smart_water_reminder/providers/user_provider.dart';
 
 class RemindersScreen extends StatefulWidget {
   const RemindersScreen({super.key});
@@ -11,7 +11,8 @@ class RemindersScreen extends StatefulWidget {
   State<RemindersScreen> createState() => _RemindersScreenState();
 }
 
-class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProviderStateMixin {
+class _RemindersScreenState extends State<RemindersScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
 
@@ -22,7 +23,8 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
       duration: const Duration(milliseconds: 500),
       vsync: this,
     );
-    _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _fadeAnimation =
+        CurvedAnimation(parent: _controller, curve: Curves.easeOut);
     _controller.forward();
   }
 
@@ -42,21 +44,21 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
       ),
-      body: Consumer2<ReminderProvider, UserProvider>(
-        builder: (context, reminderProvider, userProvider, _) {
+      body: Consumer<ReminderProvider>(
+        builder: (context, rp, _) {
           return FadeTransition(
             opacity: _fadeAnimation,
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
-                _buildStatusCard(context, reminderProvider),
+                _buildStatusCard(context, rp),
                 const SizedBox(height: 20),
-                _buildMainToggle(context, reminderProvider),
+                _buildMainToggle(context, rp),
                 const SizedBox(height: 20),
-                if (reminderProvider.remindersEnabled) ...[
-                  _buildIntervalSection(context, reminderProvider),
+                if (rp.remindersEnabled) ...[
+                  _buildIntervalSection(context, rp),
                   const SizedBox(height: 20),
-                  _buildTimeWindowSection(context, reminderProvider),
+                  _buildTimeWindowSection(context, rp),
                   const SizedBox(height: 20),
                   _buildPendingSection(context),
                   const SizedBox(height: 20),
@@ -73,6 +75,7 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
   Widget _buildStatusCard(BuildContext context, ReminderProvider rp) {
     final theme = Theme.of(context);
     final isEnabled = rp.remindersEnabled;
+    final intervalLabel = AppConstants.intervalLabel(rp.reminderInterval);
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -107,7 +110,9 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: (isEnabled ? Colors.white : theme.colorScheme.onSurfaceVariant)
+              color: (isEnabled
+                      ? Colors.white
+                      : theme.colorScheme.onSurfaceVariant)
                   .withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
             ),
@@ -116,7 +121,9 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
                   ? Icons.notifications_active_rounded
                   : Icons.notifications_off_outlined,
               size: 28,
-              color: isEnabled ? Colors.white : theme.colorScheme.onSurfaceVariant,
+              color: isEnabled
+                  ? Colors.white
+                  : theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(width: 16),
@@ -129,13 +136,15 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
-                    color: isEnabled ? Colors.white : theme.colorScheme.onSurface,
+                    color: isEnabled
+                        ? Colors.white
+                        : theme.colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   isEnabled
-                      ? 'Every ${rp.reminderInterval}h from ${rp.reminderStartTime} to ${rp.reminderEndTime}'
+                      ? 'Every $intervalLabel · ${rp.reminderStartTime}–${rp.reminderEndTime}'
                       : 'Turn on reminders to stay hydrated',
                   style: TextStyle(
                     fontSize: 13,
@@ -166,13 +175,15 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
         ),
         subtitle: Text(
           rp.remindersEnabled
-              ? 'You\'ll receive regular reminders to drink water'
+              ? "You'll receive regular reminders to drink water"
               : 'Tap to enable reminder notifications',
           style: theme.textTheme.bodySmall,
         ),
         secondary: Icon(
           Icons.notifications_outlined,
-          color: rp.remindersEnabled ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+          color: rp.remindersEnabled
+              ? theme.colorScheme.primary
+              : theme.colorScheme.onSurfaceVariant,
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
@@ -181,7 +192,8 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
 
   Widget _buildIntervalSection(BuildContext context, ReminderProvider rp) {
     final theme = Theme.of(context);
-    final intervals = [1, 2, 3, 4, 6];
+    // All presets in minutes — includes short values for device testing.
+    final presets = AppConstants.reminderIntervalPresets;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -190,7 +202,8 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
           padding: const EdgeInsets.only(left: 4, bottom: 12),
           child: Row(
             children: [
-              Icon(Icons.timer_outlined, size: 18, color: theme.colorScheme.primary),
+              Icon(Icons.timer_outlined,
+                  size: 18, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
               Text(
                 'REMINDER INTERVAL',
@@ -217,64 +230,85 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
                   ),
                 ),
                 const SizedBox(height: 12),
+                // Two rows of 4 chips to fit all 8 presets
+                _buildIntervalRow(context, rp, theme, presets.sublist(0, 4)),
+                const SizedBox(height: 8),
+                _buildIntervalRow(context, rp, theme, presets.sublist(4)),
+                const SizedBox(height: 10),
                 Row(
-                  children: intervals.map((h) {
-                    final isSelected = rp.reminderInterval == h;
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () => rp.setReminderInterval(h),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: isSelected
-                                ? [
-                                    BoxShadow(
-                                      color: theme.colorScheme.primary.withValues(alpha: 0.35),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          child: Column(
-                            children: [
-                              Text(
-                                '$h',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w700,
-                                  color: isSelected
-                                      ? Colors.white
-                                      : theme.colorScheme.onSurface,
-                                ),
-                              ),
-                              Text(
-                                'hr',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: isSelected
-                                      ? Colors.white.withValues(alpha: 0.8)
-                                      : theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
+                  children: [
+                    Icon(Icons.info_outline,
+                        size: 13,
+                        color: theme.colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        '1–2 min intervals are for notification testing only.',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
-                    );
-                  }).toList(),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildIntervalRow(BuildContext context, ReminderProvider rp,
+      ThemeData theme, List<int> items) {
+    return Row(
+      children: items.map((mins) {
+        final isSelected = rp.reminderInterval == mins;
+        final label = AppConstants.intervalLabel(mins);
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => rp.setReminderInterval(mins),
+                borderRadius: BorderRadius.circular(12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: theme.colorScheme.primary
+                                  .withValues(alpha: 0.35),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected
+                          ? Colors.white
+                          : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -288,7 +322,8 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
           padding: const EdgeInsets.only(left: 4, bottom: 12),
           child: Row(
             children: [
-              Icon(Icons.schedule_outlined, size: 18, color: theme.colorScheme.primary),
+              Icon(Icons.schedule_outlined,
+                  size: 18, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
               Text(
                 'ACTIVE HOURS',
@@ -327,11 +362,8 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Column(
-                        children: [
-                          Icon(Icons.arrow_forward_rounded, color: theme.colorScheme.onSurfaceVariant),
-                        ],
-                      ),
+                      child: Icon(Icons.arrow_forward_rounded,
+                          color: theme.colorScheme.onSurfaceVariant),
                     ),
                     Expanded(
                       child: _TimePickerButton(
@@ -390,7 +422,8 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: count > 0
                           ? theme.colorScheme.primaryContainer
@@ -407,7 +440,8 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
                       ),
                     ),
                   ),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           );
         },
       ),
@@ -417,10 +451,14 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
   Widget _buildTipsSection(BuildContext context) {
     final theme = Theme.of(context);
     final tips = [
-      ('💧', 'Drink water before each meal', 'Helps with digestion and appetite control'),
-      ('🌅', 'Start your morning with a glass', 'Rehydrate after overnight sleep'),
-      ('⏰', 'Set regular intervals', 'Consistency leads to better hydration habits'),
-      ('🥤', 'Keep a water bottle nearby', 'Visible reminders increase water intake'),
+      ('💧', 'Drink water before each meal',
+          'Helps with digestion and appetite control'),
+      ('🌅', 'Start your morning with a glass',
+          'Rehydrate after overnight sleep'),
+      ('⏰', 'Set regular intervals',
+          'Consistency leads to better hydration habits'),
+      ('🥤', 'Keep a water bottle nearby',
+          'Visible reminders increase water intake'),
     ];
 
     return Column(
@@ -430,7 +468,8 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
           padding: const EdgeInsets.only(left: 4, bottom: 12),
           child: Row(
             children: [
-              Icon(Icons.lightbulb_outline_rounded, size: 18, color: theme.colorScheme.tertiary),
+              Icon(Icons.lightbulb_outline_rounded,
+                  size: 18, color: theme.colorScheme.tertiary),
               const SizedBox(width: 8),
               Text(
                 'HYDRATION TIPS',
@@ -452,16 +491,21 @@ class _RemindersScreenState extends State<RemindersScreen> with SingleTickerProv
               return Column(
                 children: [
                   ListTile(
-                    leading: Text(emoji, style: const TextStyle(fontSize: 24)),
-                    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(subtitle, style: theme.textTheme.bodySmall),
+                    leading: Text(emoji,
+                        style: const TextStyle(fontSize: 24)),
+                    title: Text(title,
+                        style:
+                            const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle:
+                        Text(subtitle, style: theme.textTheme.bodySmall),
                     dense: true,
                   ),
                   if (!isLast)
                     Divider(
                       height: 1,
                       indent: 56,
-                      color: theme.colorScheme.outline.withValues(alpha: 0.12),
+                      color:
+                          theme.colorScheme.outline.withValues(alpha: 0.12),
                     ),
                 ],
               );
@@ -516,43 +560,48 @@ class _TimePickerButton extends StatelessWidget {
       minute: int.parse(parts[1]),
     );
 
-    return GestureDetector(
-      onTap: () async {
-        final picked = await showTimePicker(context: context, initialTime: tod);
-        if (picked != null) {
-          onChanged(
-            '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}',
-          );
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: theme.colorScheme.primary.withValues(alpha: 0.2),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () async {
+          final picked =
+              await showTimePicker(context: context, initialTime: tod);
+          if (picked != null && context.mounted) {
+            onChanged(
+              '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}',
+            );
+          }
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: theme.colorScheme.primary.withValues(alpha: 0.2),
+            ),
           ),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 20, color: theme.colorScheme.primary),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+          child: Column(
+            children: [
+              Icon(icon, size: 20, color: theme.colorScheme.primary),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              time,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.primary,
+              const SizedBox(height: 4),
+              Text(
+                time,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: theme.colorScheme.primary,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -7,6 +7,7 @@ class StatsRow extends StatelessWidget {
   final WaterIntake? lastIntake;
   final VoidCallback? onUndo;
   final bool canUndo;
+  final VoidCallback? onIntakesTodayTap;
 
   const StatsRow({
     super.key,
@@ -14,6 +15,7 @@ class StatsRow extends StatelessWidget {
     this.lastIntake,
     this.onUndo,
     this.canUndo = false,
+    this.onIntakesTodayTap,
   });
 
   @override
@@ -28,7 +30,14 @@ class StatsRow extends StatelessWidget {
             label: 'Intakes Today',
             value: '$glassCount',
             color: theme.colorScheme.primary,
-            onTap: null,
+            onTap: onIntakesTodayTap,
+            trailing: onIntakesTodayTap != null
+                ? Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: theme.colorScheme.primary.withValues(alpha: 0.6),
+                  )
+                : null,
           ),
         ),
         const SizedBox(width: 12),

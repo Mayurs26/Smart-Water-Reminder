@@ -81,9 +81,10 @@ class AppEntryPoint extends StatelessWidget {
         // Every intake → reschedule smart reminder with updated recommended amount.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           context.read<WaterProvider>().setOnWaterChanged((consumed) {
-            final reminder = context.read<ReminderProvider>();
-            reminder.onWaterIntakeAdded();
-            reminder.checkAndRescheduleIfGoalMet();
+            // onWaterIntakeAdded handles both scheduling AND goal-met cancellation.
+            // Do NOT also call checkAndRescheduleIfGoalMet — that caused a
+            // cancel→reschedule→cancel race (Bug #2).
+            context.read<ReminderProvider>().onWaterIntakeAdded();
           });
         });
 

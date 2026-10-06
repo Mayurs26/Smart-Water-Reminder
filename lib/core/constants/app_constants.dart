@@ -16,8 +16,11 @@ class AppConstants {
   static const String keyReminderStartTime = 'reminder_start_time';
   static const String keyReminderEndTime = 'reminder_end_time';
   static const String keyThemeMode = 'theme_mode';
-  
-  static const int defaultReminderInterval = 2;
+
+  // Reminder interval is stored and used in MINUTES.
+  // Supported presets shown in RemindersScreen.
+  static const List<int> reminderIntervalPresets = [1, 2, 5, 10, 15, 30, 60, 120];
+  static const int defaultReminderInterval = 60; // 60 minutes = 1 hour
   static const String defaultWakeUpTime = '07:00';
   static const String defaultSleepTime = '22:00';
   static const String defaultReminderStartTime = '09:00';
@@ -30,4 +33,13 @@ class AppConstants {
   static const String notificationChannelId = 'water_reminders';
   static const String notificationChannelName = 'Water Reminders';
   static const String notificationChannelDescription = 'Reminders to drink water throughout the day';
+
+  /// Human-readable label for a reminder interval given in minutes.
+  static String intervalLabel(int minutes) {
+    if (minutes < 60) return '${minutes}m';
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    if (m == 0) return '${h}h';
+    return '${h}h ${m}m';
+  }
 }

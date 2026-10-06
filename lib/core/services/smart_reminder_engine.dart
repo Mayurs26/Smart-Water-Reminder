@@ -2,8 +2,7 @@ import 'package:smart_water_reminder/core/constants/app_constants.dart';
 import 'package:smart_water_reminder/data/models/water_intake.dart';
 
 /// Pure computation — no Flutter/state dependencies.
-/// Calculates next reminder time, countdown, and recommended amount
-/// from the actual intake history and user settings.
+/// All interval parameters are in MINUTES.
 class SmartReminderEngine {
   const SmartReminderEngine._();
 
@@ -21,22 +20,21 @@ class SmartReminderEngine {
   /// The next reminder DateTime.
   ///
   /// Logic:
-  ///   – If there is a last intake, next = lastIntake + intervalHours.
-  ///   – If there is no intake yet, next = now + intervalHours (first reminder).
-  ///   – If the calculated time is already in the past, next = now + interval
-  ///     (i.e., the reminder fires as soon as possible — still in the future).
+  ///   – If there is a last intake, next = lastIntake + intervalMinutes.
+  ///   – If there is no intake yet, next = now + intervalMinutes (first reminder).
+  ///   – If the calculated time is already in the past, next = now + interval.
   static DateTime nextReminderTime({
     required List<WaterIntake> todayIntakes,
-    required int intervalHours,
+    required int intervalMinutes,
     required String endTimeStr,
   }) {
     final now = DateTime.now();
     final base = lastIntakeTime(todayIntakes) ?? now;
-    final candidate = base.add(Duration(hours: intervalHours));
+    final candidate = base.add(Duration(minutes: intervalMinutes));
 
     // If the candidate is already past, next opportunity is from now.
     final next = candidate.isBefore(now)
-        ? now.add(Duration(hours: intervalHours))
+        ? now.add(Duration(minutes: intervalMinutes))
         : candidate;
 
     // Cap at sleep time.
@@ -47,12 +45,12 @@ class SmartReminderEngine {
   /// Countdown in minutes from now to the next reminder (≥ 0).
   static int countdownMinutes({
     required List<WaterIntake> todayIntakes,
-    required int intervalHours,
+    required int intervalMinutes,
     required String endTimeStr,
   }) {
     final next = nextReminderTime(
       todayIntakes: todayIntakes,
-      intervalHours: intervalHours,
+      intervalMinutes: intervalMinutes,
       endTimeStr: endTimeStr,
     );
     final diff = next.difference(DateTime.now()).inMinutes;
@@ -61,15 +59,15 @@ class SmartReminderEngine {
 
   /// How many reminder slots remain from now until end of day.
   static int remainingSlots({
-    required int intervalHours,
+    required int intervalMinutes,
     required String endTimeStr,
   }) {
     final now = DateTime.now();
     final end = _todayAt(endTimeStr);
-    if (end.isBefore(now)) return 0;
-    final minutes = end.difference(now).inMinutes;
-    final slots = (minutes / (intervalHours * 60)).ceil();
-    return slots.clamp(1, 100); // at least 1 slot so we never divide by zero
+    if (end.isBefore(now)) return 1; // never divide by zero
+    final diffMinutes = end.difference(now).inMinutes;
+    final slots = (diffMinutes / intervalMinutes).ceil();
+    return slots.clamp(1, 1000);
   }
 
   /// Recommended amount for the *next* drink.
@@ -80,14 +78,14 @@ class SmartReminderEngine {
   static int recommendedAmount({
     required int dailyGoal,
     required int consumed,
-    required int intervalHours,
+    required int intervalMinutes,
     required String endTimeStr,
   }) {
     final remaining = (dailyGoal - consumed).clamp(0, dailyGoal);
     if (remaining == 0) return 0;
 
     final slots = remainingSlots(
-      intervalHours: intervalHours,
+      intervalMinutes: intervalMinutes,
       endTimeStr: endTimeStr,
     );
 
@@ -97,8 +95,8 @@ class SmartReminderEngine {
     return rounded;
   }
 
-  /// Default interval hours when not configured.
-  static int get defaultIntervalHours => AppConstants.defaultReminderInterval;
+  /// Default interval in minutes when not configured.
+  static int get defaultIntervalMinutes => AppConstants.defaultReminderInterval;
 
   // ──────────────────────────────────────────────────────────────────────────
   //  Helpers

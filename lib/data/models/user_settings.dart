@@ -59,7 +59,7 @@ class UserSettings {
       dailyGoal: map['daily_goal'] as int? ?? 2500,
       wakeUpTime: map['wake_up_time'] as String? ?? '07:00',
       sleepTime: map['sleep_time'] as String? ?? '22:00',
-      reminderInterval: map['reminder_interval'] as int? ?? 2,
+      reminderInterval: map['reminder_interval'] as int? ?? 60,
       remindersEnabled: (map['reminders_enabled'] as int? ?? 1) == 1,
       reminderStartTime: map['reminder_start_time'] as String? ?? '09:00',
       reminderEndTime: map['reminder_end_time'] as String? ?? '21:00',

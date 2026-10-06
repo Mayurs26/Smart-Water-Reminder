@@ -9,7 +9,23 @@ import 'package:smart_water_reminder/core/widgets/app_logo.dart';
 class SplashScreen extends StatefulWidget {
   final Widget next;
 
-  const SplashScreen({super.key, required this.next});
+  // These can be overridden in tests to make animation instant/deterministic.
+  // Production code always uses the defaults (null → real durations).
+  final Duration? introDuration;
+  final Duration? exitDuration;
+  final Duration? holdDuration;
+  final Duration? transitionDuration;
+  final Duration? startDelay;
+
+  const SplashScreen({
+    super.key,
+    required this.next,
+    this.introDuration,
+    this.exitDuration,
+    this.holdDuration,
+    this.transitionDuration,
+    this.startDelay,
+  });
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -37,11 +53,11 @@ class _SplashScreenState extends State<SplashScreen>
 
     _introController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2400),
+      duration: widget.introDuration ?? const Duration(milliseconds: 2400),
     );
     _exitController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: widget.exitDuration ?? const Duration(milliseconds: 600),
     );
 
     _bgFade = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -111,11 +127,11 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     // Give a tiny delay before starting so the engine can render the first frame properly
-    Future<void> _finishWhenReady() async {
+    Future<void> finishWhenReady() async {
       await _introController.forward().orCancel;
       if (!mounted) return;
 
-      await Future.delayed(const Duration(milliseconds: 250));
+      await Future.delayed(widget.holdDuration ?? const Duration(milliseconds: 250));
       if (!mounted) return;
 
       await _exitController.forward().orCancel;
@@ -123,8 +139,8 @@ class _SplashScreenState extends State<SplashScreen>
 
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) => widget.next,
-          transitionDuration: const Duration(milliseconds: 700),
+          pageBuilder: (_, _, _) => widget.next,
+          transitionDuration: widget.transitionDuration ?? const Duration(milliseconds: 700),
           transitionsBuilder: (_, animation, secondaryAnimation, child) {
             return FadeTransition(
               opacity: animation,
@@ -152,9 +168,9 @@ class _SplashScreenState extends State<SplashScreen>
       );
     }
 
-    Future.delayed(const Duration(milliseconds: 100), () {
+    Future.delayed(widget.startDelay ?? const Duration(milliseconds: 100), () {
       if (!mounted) return;
-      _finishWhenReady();
+      finishWhenReady();
     });
   }
 
